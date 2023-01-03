@@ -6,12 +6,25 @@ using System.Windows.Forms;
 
 namespace TaskbarTimer
 {
+    public enum ClockState
+    {
+        Started = 0,
+        Completed = 1,
+        HalfTime = 2,
+        TenMinMark = 3,
+    }
+
+
     public partial class Form1 : Form
     {
         private BackgroundWorker bgw;
 
         private static bool IsTimerOn = false;
         private static DateTime endTime;
+        private static DateTime halfTime;
+        private static DateTime startTime;
+        private static int durationInMins;
+
         private static bool finalClose = false;
 
         public Form1()
@@ -32,30 +45,49 @@ namespace TaskbarTimer
                 // report progress
                 // 1 sec
                 Thread.Sleep(1000);
-                bgw.ReportProgress(0);
+                ClockState state = ClockState.Started;
+                if (halfTime != DateTime.MaxValue && halfTime.Subtract(DateTime.UtcNow) <= TimeSpan.Zero)
+                {
+                    state = ClockState.HalfTime;
+                    halfTime = DateTime.MaxValue;
+                }
+                else if (endTime != DateTime.MaxValue && endTime.Subtract(DateTime.UtcNow) <= TimeSpan.Zero)
+                {
+                    state = ClockState.Completed;
+                }
+
+                bgw.ReportProgress(0, state);
             }
         }
 
         private void Bgw_ProgressChanged(object? sender, ProgressChangedEventArgs e)
         {
-
             if (IsTimerOn)
             {
                 var remainingTime = endTime.Subtract(DateTime.UtcNow);
+                var state = (ClockState?)e.UserState;
 
-                if (remainingTime <= TimeSpan.Zero)
-                {
-                    // exit
-                    ResetState();
-                    this.WindowState = FormWindowState.Normal;
-                    SoundPlayer simpleSound = new SoundPlayer(@".\bell.wav");
-                    simpleSound.Play();
-                    notifyIcon1.BalloonTipTitle = "pomodoro timer";
-                    notifyIcon1.BalloonTipText = $"TIME UP!";
-                    notifyIcon1.ShowBalloonTip(5);
-
+                if (!state.HasValue)
                     return;
+
+                switch (state)
+                {
+                    case ClockState.Completed:
+                        // exit
+                        ResetState();
+                        this.WindowState = FormWindowState.Normal;
+                        SoundPlayer simpleSound = new SoundPlayer(@".\winfantasia.wav");
+                        simpleSound.Play();
+                        notifyIcon1.BalloonTipTitle = "pomodoro timer";
+                        notifyIcon1.BalloonTipText = $"TIME UP!";
+                        notifyIcon1.ShowBalloonTip(5);
+                        return;
+                    case ClockState.HalfTime:
+                        simpleSound = new SoundPlayer(@".\bell.wav");
+                        simpleSound.Play();
+                        break;
                 }
+
 
                 if (remainingTime < TimeSpan.FromMinutes(1))
                 {
@@ -107,7 +139,11 @@ namespace TaskbarTimer
                 return;
             }
 
-            endTime = DateTime.UtcNow.AddMinutes(timerVal.Value);
+            startTime = DateTime.UtcNow;
+            endTime = startTime.AddMinutes(timerVal.Value);
+            durationInMins = (int)(endTime - startTime).TotalMinutes;
+            halfTime = startTime.AddMinutes(durationInMins / 2);
+
             foreach (var btn in timerButtons)
             {
                 btn.Enabled = false;
